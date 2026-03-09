@@ -11,6 +11,7 @@
 
 #include <jni.h>
 #include <pthread.h>
+#include <unistd.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,6 +34,8 @@
 #define STR(s) STR_ARG (s)
 #define STR_ARG(c) #c
 #define N_ELEMENTS(arr) (sizeof (arr) / sizeof ((arr)[0]))
+#define RESULT_START_PENDING (-1000)
+#define RESULT_THREAD_CREATE_FAILED (-1001)
 
 typedef struct _ThreadData ThreadData;
 
@@ -42,7 +45,8 @@ struct _ThreadData
     int fd;
 };
 
-static int is_working;
+static volatile int is_working;
+static volatile int last_result = RESULT_START_PENDING;
 static JavaVM *java_vm;
 static pthread_t work_thread;
 static pthread_mutex_t mutex;
@@ -52,12 +56,16 @@ static void native_start_service (JNIEnv *env, jobject thiz, jstring conig_path,
                                   jint fd);
 static void native_stop_service (JNIEnv *env, jobject thiz);
 static jlongArray native_get_stats (JNIEnv *env, jobject thiz);
+static jboolean native_is_running (JNIEnv *env, jobject thiz);
+static jint native_get_last_result (JNIEnv *env, jobject thiz);
 
 static JNINativeMethod native_methods[] = {
     { "TProxyStartService", "(Ljava/lang/String;I)V",
       (void *)native_start_service },
     { "TProxyStopService", "()V", (void *)native_stop_service },
     { "TProxyGetStats", "()[J", (void *)native_get_stats },
+    { "TProxyIsRunning", "()Z", (void *)native_is_running },
+    { "TProxyGetLastResult", "()I", (void *)native_get_last_result },
 };
 
 static void
@@ -93,7 +101,8 @@ thread_handler (void *data)
 {
     ThreadData *tdata = data;
 
-    hev_socks5_tunnel_main (tdata->path, tdata->fd);
+    last_result = hev_socks5_tunnel_main (tdata->path, tdata->fd);
+    is_working = 0;
 
     free (tdata->path);
     free (tdata);
@@ -114,7 +123,13 @@ native_start_service (JNIEnv *env, jobject thiz, jstring config_path, jint fd)
         goto exit;
 
     tdata = malloc (sizeof (ThreadData));
+    if (!tdata) {
+        last_result = RESULT_THREAD_CREATE_FAILED;
+        goto exit;
+    }
+
     tdata->fd = fd;
+    last_result = RESULT_START_PENDING;
 
     bytes = (const jbyte *)(*env)->GetStringUTFChars (env, config_path, NULL);
     tdata->path = strdup ((const char *)bytes);
@@ -122,11 +137,13 @@ native_start_service (JNIEnv *env, jobject thiz, jstring config_path, jint fd)
 
     res = pthread_create (&work_thread, NULL, thread_handler, tdata);
     if (res != 0) {
+        last_result = RESULT_THREAD_CREATE_FAILED;
         free (tdata->path);
         free (tdata);
         goto exit;
     }
 
+    pthread_detach (work_thread);
     is_working = 1;
 exit:
     pthread_mutex_unlock (&mutex);
@@ -135,17 +152,19 @@ exit:
 static void
 native_stop_service (JNIEnv *env, jobject thiz)
 {
+    int running;
+
     pthread_mutex_lock (&mutex);
-
-    if (!is_working)
-        goto exit;
-
-    hev_socks5_tunnel_quit ();
-    pthread_join (work_thread, NULL);
-
-    is_working = 0;
-exit:
+    running = is_working;
+    if (running)
+        hev_socks5_tunnel_quit ();
     pthread_mutex_unlock (&mutex);
+
+    if (!running)
+        return;
+
+    while (is_working)
+        usleep (10 * 1000);
 }
 
 static jlongArray
@@ -165,6 +184,18 @@ native_get_stats (JNIEnv *env, jobject thiz)
     (*env)->SetLongArrayRegion (env, res, 0, 4, array);
 
     return res;
+}
+
+static jboolean
+native_is_running (JNIEnv *env, jobject thiz)
+{
+    return is_working ? JNI_TRUE : JNI_FALSE;
+}
+
+static jint
+native_get_last_result (JNIEnv *env, jobject thiz)
+{
+    return last_result;
 }
 
 #endif /* ANDROID */

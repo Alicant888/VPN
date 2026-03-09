@@ -37,7 +37,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -70,6 +72,7 @@ fun MainScreen(
 ) {
     val isBusy = uiState.status.phase == TunnelPhase.CONNECTING || uiState.status.phase == TunnelPhase.DISCONNECTING
     val isConnected = uiState.status.phase == TunnelPhase.CONNECTED
+    val settingsEditable = uiState.status.phase == TunnelPhase.IDLE || uiState.status.phase == TunnelPhase.ERROR
 
     Scaffold(
         topBar = {
@@ -97,9 +100,19 @@ fun MainScreen(
         ) {
             item { Spacer(modifier = Modifier.height(4.dp)) }
             item { StatusCard(uiState) }
+            if (!settingsEditable) {
+                item {
+                    Text(
+                        "Disconnect the tunnel to edit settings.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
             item {
                 ProxyCard(
                     uiState = uiState,
+                    enabled = settingsEditable,
                     onProxyHostChanged = onProxyHostChanged,
                     onProxyPortChanged = onProxyPortChanged,
                     onUsernameChanged = onUsernameChanged,
@@ -109,6 +122,7 @@ fun MainScreen(
             item {
                 DnsCard(
                     uiState = uiState,
+                    enabled = settingsEditable,
                     onDnsModeChanged = onDnsModeChanged,
                     onCustomDnsChanged = onCustomDnsChanged,
                 )
@@ -116,6 +130,7 @@ fun MainScreen(
             item {
                 RoutingCard(
                     uiState = uiState,
+                    enabled = settingsEditable,
                     onRoutingModeChanged = onRoutingModeChanged,
                     onAppPickerVisibilityChanged = onAppPickerVisibilityChanged,
                 )
@@ -123,6 +138,7 @@ fun MainScreen(
             item {
                 StartupCard(
                     uiState = uiState,
+                    enabled = settingsEditable,
                     onAutoStartOnLaunchChanged = onAutoStartOnLaunchChanged,
                 )
             }
@@ -134,6 +150,7 @@ fun MainScreen(
     if (uiState.isAppPickerVisible) {
         AppPickerDialog(
             uiState = uiState,
+            enabled = settingsEditable,
             onDismiss = { onAppPickerVisibilityChanged(false) },
             onAppSelectionChanged = onAppSelectionChanged,
         )
@@ -167,6 +184,7 @@ private fun StatusCard(uiState: MainUiState) {
 @Composable
 private fun ProxyCard(
     uiState: MainUiState,
+    enabled: Boolean,
     onProxyHostChanged: (String) -> Unit,
     onProxyPortChanged: (String) -> Unit,
     onUsernameChanged: (String) -> Unit,
@@ -178,6 +196,7 @@ private fun ProxyCard(
             OutlinedTextField(
                 value = uiState.form.proxyHost,
                 onValueChange = onProxyHostChanged,
+                enabled = enabled,
                 label = { Text("Proxy IP / Host") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
@@ -185,6 +204,7 @@ private fun ProxyCard(
             OutlinedTextField(
                 value = uiState.form.proxyPort,
                 onValueChange = onProxyPortChanged,
+                enabled = enabled,
                 label = { Text("Port") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth(),
@@ -193,6 +213,7 @@ private fun ProxyCard(
             OutlinedTextField(
                 value = uiState.form.username,
                 onValueChange = onUsernameChanged,
+                enabled = enabled,
                 label = { Text("Username") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
@@ -200,6 +221,7 @@ private fun ProxyCard(
             OutlinedTextField(
                 value = uiState.form.password,
                 onValueChange = onPasswordChanged,
+                enabled = enabled,
                 label = { Text("Password") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
@@ -212,6 +234,7 @@ private fun ProxyCard(
 @Composable
 private fun DnsCard(
     uiState: MainUiState,
+    enabled: Boolean,
     onDnsModeChanged: (DnsMode) -> Unit,
     onCustomDnsChanged: (String) -> Unit,
 ) {
@@ -221,11 +244,13 @@ private fun DnsCard(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = uiState.form.dnsMode == DnsMode.PROVIDER,
+                    enabled = enabled,
                     onClick = { onDnsModeChanged(DnsMode.PROVIDER) },
                     label = { Text("Provider DNS") },
                 )
                 FilterChip(
                     selected = uiState.form.dnsMode == DnsMode.CUSTOM,
+                    enabled = enabled,
                     onClick = { onDnsModeChanged(DnsMode.CUSTOM) },
                     label = { Text("Custom DNS") },
                 )
@@ -234,6 +259,7 @@ private fun DnsCard(
                 OutlinedTextField(
                     value = uiState.form.customDns,
                     onValueChange = onCustomDnsChanged,
+                    enabled = enabled,
                     label = { Text("Custom DNS server") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
@@ -251,6 +277,7 @@ private fun DnsCard(
 @Composable
 private fun RoutingCard(
     uiState: MainUiState,
+    enabled: Boolean,
     onRoutingModeChanged: (RoutingMode) -> Unit,
     onAppPickerVisibilityChanged: (Boolean) -> Unit,
 ) {
@@ -260,18 +287,20 @@ private fun RoutingCard(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = uiState.form.routingMode == RoutingMode.ALL_APPS,
+                    enabled = enabled,
                     onClick = { onRoutingModeChanged(RoutingMode.ALL_APPS) },
                     label = { Text("All apps") },
                 )
                 FilterChip(
                     selected = uiState.form.routingMode == RoutingMode.SELECTED_APPS,
+                    enabled = enabled,
                     onClick = { onRoutingModeChanged(RoutingMode.SELECTED_APPS) },
                     label = { Text("Selected apps") },
                 )
             }
             if (uiState.form.routingMode == RoutingMode.SELECTED_APPS) {
                 Text("${uiState.form.selectedApps.size} apps selected", style = MaterialTheme.typography.bodyMedium)
-                Button(onClick = { onAppPickerVisibilityChanged(true) }) {
+                Button(onClick = { onAppPickerVisibilityChanged(true) }, enabled = enabled) {
                     Text("Choose apps")
                 }
                 if (uiState.form.selectedApps.isNotEmpty()) {
@@ -294,6 +323,7 @@ private fun RoutingCard(
 @Composable
 private fun StartupCard(
     uiState: MainUiState,
+    enabled: Boolean,
     onAutoStartOnLaunchChanged: (Boolean) -> Unit,
 ) {
     Card {
@@ -306,6 +336,7 @@ private fun StartupCard(
                 Checkbox(
                     checked = uiState.form.autoStartOnLaunch,
                     onCheckedChange = onAutoStartOnLaunchChanged,
+                    enabled = enabled,
                 )
                 Column(modifier = Modifier.padding(start = 12.dp)) {
                     Text("Auto-start after launch", fontWeight = FontWeight.Medium)
@@ -321,9 +352,27 @@ private fun StartupCard(
 
 @Composable
 private fun LogsCard(logs: List<LogEntry>) {
+    val clipboardManager = LocalClipboardManager.current
+
     Card {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Session log", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Session log", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                TextButton(
+                    onClick = {
+                        clipboardManager.setText(
+                            AnnotatedString(logs.joinToString(separator = "\n") { entry -> formatLog(entry) }),
+                        )
+                    },
+                    enabled = logs.isNotEmpty(),
+                ) {
+                    Text("Copy")
+                }
+            }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -348,6 +397,7 @@ private fun LogsCard(logs: List<LogEntry>) {
 @Composable
 private fun AppPickerDialog(
     uiState: MainUiState,
+    enabled: Boolean,
     onDismiss: () -> Unit,
     onAppSelectionChanged: (String, Boolean) -> Unit,
 ) {
@@ -370,6 +420,7 @@ private fun AppPickerDialog(
                                 Checkbox(
                                     checked = app.packageName in uiState.form.selectedApps,
                                     onCheckedChange = { checked -> onAppSelectionChanged(app.packageName, checked) },
+                                    enabled = enabled,
                                 )
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(app.label)

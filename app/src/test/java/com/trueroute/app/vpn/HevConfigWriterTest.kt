@@ -1,4 +1,4 @@
-﻿package com.trueroute.app.vpn
+package com.trueroute.app.vpn
 
 import com.trueroute.app.model.DnsMode
 import com.trueroute.app.model.ProxyConfig
@@ -26,6 +26,8 @@ class HevConfigWriterTest {
         assertTrue(yaml.contains("mapdns:"))
         assertTrue(yaml.contains("username: 'user'"))
         assertTrue(yaml.contains("udp: 'udp'"))
+        assertTrue(yaml.contains("network: 100.64.0.0"))
+        assertTrue(yaml.contains("netmask: 255.192.0.0"))
     }
 
     @Test
@@ -45,5 +47,24 @@ class HevConfigWriterTest {
 
         assertFalse(yaml.contains("mapdns:"))
         assertFalse(yaml.contains("username:"))
+    }
+
+    @Test
+    fun configWithLogFile_emitsNativeLogPath() {
+        val config = ProxyConfig(
+            proxyHost = "10.10.10.10",
+            proxyPort = 1080,
+            username = "user",
+            password = "pass",
+            dnsMode = DnsMode.PROVIDER,
+            customDns = null,
+            routingMode = RoutingMode.ALL_APPS,
+            selectedApps = emptySet(),
+        )
+
+        val yaml = HevConfigWriter.buildConfig(config, "/data/user/0/com.trueroute.app/cache/native.log")
+
+        assertTrue(yaml.contains("log-file: '/data/user/0/com.trueroute.app/cache/native.log'"))
+        assertTrue(yaml.contains("log-level: debug"))
     }
 }

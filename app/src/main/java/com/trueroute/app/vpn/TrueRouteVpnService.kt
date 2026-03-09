@@ -1,4 +1,4 @@
-﻿package com.trueroute.app.vpn
+package com.trueroute.app.vpn
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -23,6 +23,8 @@ import com.trueroute.app.model.TunnelStats
 import com.trueroute.app.validation.ProxyConfigValidation
 import com.trueroute.app.validation.ProxyConfigValidator
 import hev.htproxy.TProxyService
+import java.io.File
+import java.io.RandomAccessFile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -42,6 +44,9 @@ class TrueRouteVpnService : VpnService() {
 
     private var tunnelInterface: ParcelFileDescriptor? = null
     private var statsJob: Job? = null
+    private var nativeLogJob: Job? = null
+    private var nativeRuntimeFiles: HevRuntimeFiles? = null
+    private var nativeLogOffset: Long = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -75,8 +80,8 @@ class TrueRouteVpnService : VpnService() {
         }
 
         sessionRepository.reset()
-        sessionRepository.updatePhase(TunnelPhase.CONNECTING, "Preparing VPN tunnel")
-        sessionRepository.appendLog(LogLevel.INFO, "Preparing VPN tunnel")
+        sessionRepository.updatePhase(TunnelPhase.CONNECTING, "Checking SOCKS5 proxy")
+        sessionRepository.appendLog(LogLevel.INFO, "Running SOCKS5 preflight")
 
         val config = when (
             val validation = ProxyConfigValidator.validate(
@@ -91,18 +96,48 @@ class TrueRouteVpnService : VpnService() {
             }
         }
 
-        val vpnInterface = establishTunnel(config)
-        if (vpnInterface == null) {
-            reportError("Failed to establish Android VPN interface")
+        val preflight = Socks5Preflight.run(config)
+        if (!preflight.success) {
+            reportError("Proxy preflight failed: ${preflight.message}")
             stopSelf()
             return
         }
-        tunnelInterface = vpnInterface
+
+        sessionRepository.appendLog(LogLevel.INFO, preflight.message)
+        preflight.authentication?.let {
+            sessionRepository.appendLog(LogLevel.INFO, "Preflight auth: $it")
+        }
+        preflight.udpAssociateAddress?.let {
+            sessionRepository.appendLog(LogLevel.INFO, "Preflight UDP Associate: $it")
+        }
+        sessionRepository.updatePhase(TunnelPhase.CONNECTING, "Preparing VPN tunnel")
+
+        val runtimeFiles = HevConfigWriter.writeConfig(cacheDir, config)
+        nativeRuntimeFiles = runtimeFiles
+        startNativeLogPolling(runtimeFiles.logFile)
 
         try {
+            val vpnInterface = establishTunnel(config)
+            if (vpnInterface == null) {
+                reportError("Failed to establish Android VPN interface")
+                stopNativeLogPolling()
+                stopSelf()
+                return
+            }
+            tunnelInterface = vpnInterface
+
             startForegroundWithNotification()
-            val configFile = HevConfigWriter.writeConfig(cacheDir, config)
-            nativeTunnel.TProxyStartService(configFile.absolutePath, vpnInterface.fd)
+            sessionRepository.appendLog(LogLevel.INFO, "Starting native tunnel")
+            nativeTunnel.TProxyStartService(runtimeFiles.configFile.absolutePath, vpnInterface.fd)
+            delay(NATIVE_START_GRACE_PERIOD_MS)
+            drainNativeLogFile(runtimeFiles.logFile)
+
+            if (!nativeTunnel.TProxyIsRunning()) {
+                reportError("Native tunnel exited early: ${nativeResultMessage(nativeTunnel.TProxyGetLastResult())}")
+                stopTunnel(stopServiceSelf = true, preserveError = true)
+                return
+            }
+
             sessionRepository.appendLog(LogLevel.INFO, "SOCKS5 tunnel started with UDP Associate")
             sessionRepository.updatePhase(
                 TunnelPhase.CONNECTED,
@@ -111,10 +146,10 @@ class TrueRouteVpnService : VpnService() {
             startStatsPolling()
         } catch (error: UnsatisfiedLinkError) {
             reportError("Native tunnel library is unavailable: ${error.message.orEmpty()}")
-            stopTunnel(stopServiceSelf = true)
+            stopTunnel(stopServiceSelf = true, preserveError = true)
         } catch (error: Exception) {
             reportError("Tunnel start failed: ${error.message.orEmpty()}")
-            stopTunnel(stopServiceSelf = true)
+            stopTunnel(stopServiceSelf = true, preserveError = true)
         }
     }
 
@@ -133,20 +168,26 @@ class TrueRouteVpnService : VpnService() {
             DnsMode.CUSTOM -> builder.addDnsServer(config.customDns ?: DEFAULT_CUSTOM_DNS)
         }
 
-        if (config.routingMode == RoutingMode.SELECTED_APPS) {
-            config.selectedApps.forEach { packageName ->
+        when (config.routingMode) {
+            RoutingMode.SELECTED_APPS -> {
+                config.selectedApps
+                    .filterNot { it == packageName }
+                    .forEach { selectedPackage ->
+                        try {
+                            builder.addAllowedApplication(selectedPackage)
+                        } catch (_: PackageManager.NameNotFoundException) {
+                            sessionRepository.appendLog(LogLevel.WARN, "Skipping missing package: $selectedPackage")
+                        }
+                    }
+            }
+
+            RoutingMode.ALL_APPS -> {
                 try {
-                    builder.addAllowedApplication(packageName)
+                    builder.addDisallowedApplication(packageName)
                 } catch (_: PackageManager.NameNotFoundException) {
-                    sessionRepository.appendLog(LogLevel.WARN, "Skipping missing package: $packageName")
+                    sessionRepository.appendLog(LogLevel.WARN, "Failed to disallow TrueRoute package from VPN")
                 }
             }
-        }
-
-        try {
-            builder.addDisallowedApplication(packageName)
-        } catch (_: PackageManager.NameNotFoundException) {
-            sessionRepository.appendLog(LogLevel.WARN, "Failed to disallow TrueRoute package from VPN")
         }
 
         return builder.establish()
@@ -162,6 +203,12 @@ class TrueRouteVpnService : VpnService() {
         statsJob?.cancel()
         statsJob = serviceScope.launch {
             while (isActive && tunnelInterface != null) {
+                if (!nativeTunnel.TProxyIsRunning()) {
+                    reportError("Native tunnel stopped unexpectedly: ${nativeResultMessage(nativeTunnel.TProxyGetLastResult())}")
+                    stopTunnel(stopServiceSelf = true, preserveError = true)
+                    break
+                }
+
                 val stats = nativeTunnel.TProxyGetStats()
                 if (stats.size >= 4) {
                     sessionRepository.updateStats(
@@ -173,21 +220,89 @@ class TrueRouteVpnService : VpnService() {
                         ),
                     )
                 }
+
+                nativeRuntimeFiles?.logFile?.let(::drainNativeLogFile)
                 delay(STATS_POLL_INTERVAL_MS)
             }
         }
     }
 
-    private suspend fun stopTunnel(stopServiceSelf: Boolean) {
-        if (tunnelInterface == null) {
+    private fun startNativeLogPolling(logFile: File) {
+        nativeLogOffset = 0L
+        nativeLogJob?.cancel()
+        nativeLogJob = serviceScope.launch {
+            while (isActive) {
+                drainNativeLogFile(logFile)
+                delay(NATIVE_LOG_POLL_INTERVAL_MS)
+            }
+        }
+    }
+
+    private fun drainNativeLogFile(logFile: File) {
+        if (!logFile.exists()) {
+            return
+        }
+
+        runCatching {
+            RandomAccessFile(logFile, "r").use { reader ->
+                if (nativeLogOffset > reader.length()) {
+                    nativeLogOffset = 0L
+                }
+                reader.seek(nativeLogOffset)
+
+                var line = reader.readLine()
+                while (line != null) {
+                    appendNativeLogLine(line)
+                    line = reader.readLine()
+                }
+
+                nativeLogOffset = reader.filePointer
+            }
+        }
+    }
+
+    private fun appendNativeLogLine(rawLine: String) {
+        val line = rawLine.trim()
+        if (line.isEmpty()) {
+            return
+        }
+
+        val match = NATIVE_LOG_PATTERN.matchEntire(line)
+        val level = when (match?.groupValues?.getOrNull(1)) {
+            "D" -> LogLevel.DEBUG
+            "I" -> LogLevel.INFO
+            "W" -> LogLevel.WARN
+            "E" -> LogLevel.ERROR
+            else -> LogLevel.DEBUG
+        }
+        val message = match?.groupValues?.getOrNull(2).orEmpty().ifBlank { line }
+        sessionRepository.appendLog(level, "native: $message")
+    }
+
+    private suspend fun stopNativeLogPolling() {
+        nativeRuntimeFiles?.logFile?.let(::drainNativeLogFile)
+        nativeLogJob?.cancelAndJoin()
+        nativeLogJob = null
+        nativeRuntimeFiles = null
+        nativeLogOffset = 0L
+    }
+
+    private suspend fun stopTunnel(stopServiceSelf: Boolean, preserveError: Boolean = false) {
+        val hadTunnel = tunnelInterface != null || nativeTunnel.TProxyIsRunning()
+        if (!hadTunnel) {
+            stopNativeLogPolling()
             if (stopServiceSelf) {
                 stopSelf()
             }
             return
         }
 
-        sessionRepository.updatePhase(TunnelPhase.DISCONNECTING, "Stopping tunnel")
-        sessionRepository.appendLog(LogLevel.INFO, "Stopping tunnel")
+        if (!preserveError) {
+            sessionRepository.updatePhase(TunnelPhase.DISCONNECTING, "Stopping tunnel")
+            sessionRepository.appendLog(LogLevel.INFO, "Stopping tunnel")
+        } else {
+            sessionRepository.appendLog(LogLevel.WARN, "Stopping tunnel after error")
+        }
 
         statsJob?.cancelAndJoin()
         statsJob = null
@@ -203,10 +318,14 @@ class TrueRouteVpnService : VpnService() {
             }
         tunnelInterface = null
 
+        stopNativeLogPolling()
         stopForeground(STOP_FOREGROUND_REMOVE)
         sessionRepository.updateStats(TunnelStats())
-        sessionRepository.updatePhase(TunnelPhase.IDLE, "Disconnected")
-        sessionRepository.appendLog(LogLevel.INFO, "Disconnected")
+
+        if (!preserveError) {
+            sessionRepository.updatePhase(TunnelPhase.IDLE, "Disconnected")
+            sessionRepository.appendLog(LogLevel.INFO, "Disconnected")
+        }
 
         if (stopServiceSelf) {
             stopSelf()
@@ -216,6 +335,18 @@ class TrueRouteVpnService : VpnService() {
     private fun reportError(message: String) {
         sessionRepository.appendLog(LogLevel.ERROR, message)
         sessionRepository.updatePhase(TunnelPhase.ERROR, message)
+    }
+
+    private fun nativeResultMessage(code: Int): String = when (code) {
+        0 -> "normal shutdown"
+        -1 -> "configuration parse failed"
+        -2 -> "logger init failed"
+        -3 -> "SOCKS5 logger init failed"
+        -4 -> "task system init failed"
+        -5 -> "tunnel init failed"
+        -1000 -> "start requested but result not available yet"
+        -1001 -> "native worker thread creation failed"
+        else -> "error code $code"
     }
 
     private fun startForegroundWithNotification() {
@@ -257,10 +388,9 @@ class TrueRouteVpnService : VpnService() {
         private const val NOTIFICATION_CHANNEL_ID = "trueroute_tunnel"
         private const val NOTIFICATION_ID = 1001
         private const val STATS_POLL_INTERVAL_MS = 1_000L
+        private const val NATIVE_LOG_POLL_INTERVAL_MS = 500L
+        private const val NATIVE_START_GRACE_PERIOD_MS = 750L
         private const val DEFAULT_CUSTOM_DNS = "8.8.8.8"
+        private val NATIVE_LOG_PATTERN = Regex("""^\[[^\]]+\]\s+\[([DIWE])\]\s+(.*)$""")
     }
 }
-
-
-
-

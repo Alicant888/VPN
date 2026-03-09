@@ -235,19 +235,44 @@ hev_socks5_client_read_response (HevSocks5Client *self)
     switch (res.addr.atype) {
     case HEV_SOCKS5_ADDR_TYPE_IPV4:
         addrlen = 6;
+        ret = hev_task_io_socket_recv (HEV_SOCKS5 (self)->fd, &res.addr.ipv4,
+                                       addrlen, MSG_WAITALL, task_io_yielder,
+                                       self);
+        if (ret != addrlen) {
+            LOG_I ("%p socks5 client read addr", self);
+            return -1;
+        }
         break;
     case HEV_SOCKS5_ADDR_TYPE_IPV6:
         addrlen = 18;
+        ret = hev_task_io_socket_recv (HEV_SOCKS5 (self)->fd, &res.addr.ipv6,
+                                       addrlen, MSG_WAITALL, task_io_yielder,
+                                       self);
+        if (ret != addrlen) {
+            LOG_I ("%p socks5 client read addr", self);
+            return -1;
+        }
+        break;
+    case HEV_SOCKS5_ADDR_TYPE_NAME:
+        ret = hev_task_io_socket_recv (HEV_SOCKS5 (self)->fd,
+                                       &res.addr.domain.len, 1, MSG_WAITALL,
+                                       task_io_yielder, self);
+        if (ret != 1) {
+            LOG_I ("%p socks5 client read addr len", self);
+            return -1;
+        }
+
+        addrlen = res.addr.domain.len + 2;
+        ret = hev_task_io_socket_recv (HEV_SOCKS5 (self)->fd,
+                                       res.addr.domain.addr, addrlen,
+                                       MSG_WAITALL, task_io_yielder, self);
+        if (ret != addrlen) {
+            LOG_I ("%p socks5 client read addr", self);
+            return -1;
+        }
         break;
     default:
         LOG_I ("%p socks5 client res.atype %u", self, res.addr.atype);
-        return -1;
-    }
-
-    ret = hev_task_io_socket_recv (HEV_SOCKS5 (self)->fd, &res.addr.ipv4,
-                                   addrlen, MSG_WAITALL, task_io_yielder, self);
-    if (ret != addrlen) {
-        LOG_I ("%p socks5 client read addr", self);
         return -1;
     }
 

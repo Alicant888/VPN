@@ -1,10 +1,11 @@
-﻿package com.trueroute.app.validation
+package com.trueroute.app.validation
 
 import com.trueroute.app.model.DnsMode
 import com.trueroute.app.model.ProxyConfig
 import com.trueroute.app.model.ProxyConfigForm
 import com.trueroute.app.model.RoutingMode
 import java.net.InetAddress
+import kotlin.text.Charsets
 
 sealed interface ProxyConfigValidation {
     data class Valid(val config: ProxyConfig) : ProxyConfigValidation
@@ -22,6 +23,14 @@ object ProxyConfigValidator {
             ?: return ProxyConfigValidation.Invalid("Proxy port must be a valid number")
         if (port !in 1..65535) {
             return ProxyConfigValidation.Invalid("Proxy port must be between 1 and 65535")
+        }
+
+        if (form.username.toByteArray(Charsets.UTF_8).size > 255) {
+            return ProxyConfigValidation.Invalid("SOCKS5 username must be at most 255 bytes")
+        }
+
+        if (form.password.toByteArray(Charsets.UTF_8).size > 255) {
+            return ProxyConfigValidation.Invalid("SOCKS5 password must be at most 255 bytes")
         }
 
         val customDns = form.customDns.trim()

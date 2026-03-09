@@ -10,4 +10,8 @@ public class TProxyService {
     public native void TProxyStopService();
 
     public native long[] TProxyGetStats();
+
+    public native boolean TProxyIsRunning();
+
+    public native int TProxyGetLastResult();
 }
