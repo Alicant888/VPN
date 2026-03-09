@@ -52,6 +52,7 @@ object ProxyConfigValidator {
                 customDns = customDns.takeIf { it.isNotEmpty() },
                 routingMode = form.routingMode,
                 selectedApps = form.selectedApps,
+                udpRelayMode = form.udpRelayMode,
             ),
         )
     }

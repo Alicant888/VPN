@@ -20,6 +20,7 @@ import com.trueroute.app.model.ProxyConfig
 import com.trueroute.app.model.RoutingMode
 import com.trueroute.app.model.TunnelPhase
 import com.trueroute.app.model.TunnelStats
+import com.trueroute.app.model.UdpRelayMode
 import com.trueroute.app.validation.ProxyConfigValidation
 import com.trueroute.app.validation.ProxyConfigValidator
 import hev.htproxy.TProxyService
@@ -96,6 +97,14 @@ class TrueRouteVpnService : VpnService() {
             }
         }
 
+        sessionRepository.appendLog(LogLevel.INFO, "Relay mode: ${relayModeLabel(config)}")
+        if (config.udpRelayMode == UdpRelayMode.TCP_FALLBACK) {
+            sessionRepository.appendLog(
+                LogLevel.WARN,
+                "TCP fallback uses hev's proprietary UDP-in-TCP extension and may not be supported by every SOCKS5 provider",
+            )
+        }
+
         val preflight = Socks5Preflight.run(config)
         if (!preflight.success) {
             reportError("Proxy preflight failed: ${preflight.message}")
@@ -107,8 +116,8 @@ class TrueRouteVpnService : VpnService() {
         preflight.authentication?.let {
             sessionRepository.appendLog(LogLevel.INFO, "Preflight auth: $it")
         }
-        preflight.udpAssociateAddress?.let {
-            sessionRepository.appendLog(LogLevel.INFO, "Preflight UDP Associate: $it")
+        preflight.relayCheck?.let {
+            sessionRepository.appendLog(LogLevel.INFO, it)
         }
         sessionRepository.updatePhase(TunnelPhase.CONNECTING, "Preparing VPN tunnel")
 
@@ -138,10 +147,10 @@ class TrueRouteVpnService : VpnService() {
                 return
             }
 
-            sessionRepository.appendLog(LogLevel.INFO, "SOCKS5 tunnel started with UDP Associate")
+            sessionRepository.appendLog(LogLevel.INFO, "SOCKS5 tunnel started with ${relayModeLabel(config)}")
             sessionRepository.updatePhase(
                 TunnelPhase.CONNECTED,
-                "Connected via ${config.proxyHost}:${config.proxyPort}",
+                "Connected via ${config.proxyHost}:${config.proxyPort} (${relayModeLabel(config)})",
             )
             startStatsPolling()
         } catch (error: UnsatisfiedLinkError) {
@@ -196,7 +205,12 @@ class TrueRouteVpnService : VpnService() {
     private fun buildSessionName(config: ProxyConfig): String {
         val routingLabel = if (config.routingMode == RoutingMode.ALL_APPS) "All apps" else "Selected apps"
         val dnsLabel = if (config.dnsMode == DnsMode.PROVIDER) "Provider DNS" else "Custom DNS"
-        return "TrueRoute - $routingLabel - $dnsLabel"
+        return "TrueRoute - $routingLabel - $dnsLabel - ${relayModeLabel(config)}"
+    }
+
+    private fun relayModeLabel(config: ProxyConfig): String = when (config.udpRelayMode) {
+        UdpRelayMode.UDP_ASSOCIATE -> "UDP relay"
+        UdpRelayMode.TCP_FALLBACK -> "TCP fallback"
     }
 
     private fun startStatsPolling() {
@@ -221,7 +235,6 @@ class TrueRouteVpnService : VpnService() {
                     )
                 }
 
-                nativeRuntimeFiles?.logFile?.let(::drainNativeLogFile)
                 delay(STATS_POLL_INTERVAL_MS)
             }
         }

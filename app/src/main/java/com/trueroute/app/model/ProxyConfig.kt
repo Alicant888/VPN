@@ -9,6 +9,7 @@ data class ProxyConfig(
     val customDns: String?,
     val routingMode: RoutingMode,
     val selectedApps: Set<String>,
+    val udpRelayMode: UdpRelayMode = UdpRelayMode.UDP_ASSOCIATE,
 )
 
 data class ProxyConfigForm(
@@ -21,4 +22,5 @@ data class ProxyConfigForm(
     val routingMode: RoutingMode = RoutingMode.ALL_APPS,
     val selectedApps: Set<String> = emptySet(),
     val autoStartOnLaunch: Boolean = false,
+    val udpRelayMode: UdpRelayMode = UdpRelayMode.UDP_ASSOCIATE,
 )

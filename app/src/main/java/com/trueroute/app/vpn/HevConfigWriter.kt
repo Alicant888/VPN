@@ -2,6 +2,7 @@ package com.trueroute.app.vpn
 
 import com.trueroute.app.model.DnsMode
 import com.trueroute.app.model.ProxyConfig
+import com.trueroute.app.model.UdpRelayMode
 import java.io.File
 
 data class HevRuntimeFiles(
@@ -42,7 +43,7 @@ object HevConfigWriter {
         appendLine("socks5:")
         appendLine("  port: ${config.proxyPort}")
         appendLine("  address: ${yamlString(config.proxyHost)}")
-        appendLine("  udp: 'udp'")
+        appendLine("  udp: ${yamlString(config.udpRelayMode.toHevValue())}")
         if (config.username.isNotEmpty() && config.password.isNotEmpty()) {
             appendLine("  username: ${yamlString(config.username)}")
             appendLine("  password: ${yamlString(config.password)}")
@@ -55,6 +56,11 @@ object HevConfigWriter {
             appendLine("  netmask: $MAPPED_DNS_NETMASK")
             appendLine("  cache-size: 10000")
         }
+    }
+
+    private fun UdpRelayMode.toHevValue(): String = when (this) {
+        UdpRelayMode.UDP_ASSOCIATE -> "udp"
+        UdpRelayMode.TCP_FALLBACK -> "tcp"
     }
 
     private fun yamlString(value: String): String = "'${value.replace("'", "''")}'"

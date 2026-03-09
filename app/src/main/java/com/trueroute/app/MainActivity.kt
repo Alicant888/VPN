@@ -43,6 +43,7 @@ class MainActivity : ComponentActivity() {
                         onProxyPortChanged = viewModel::onProxyPortChanged,
                         onUsernameChanged = viewModel::onUsernameChanged,
                         onPasswordChanged = viewModel::onPasswordChanged,
+                        onUdpRelayModeChanged = viewModel::onUdpRelayModeChanged,
                         onDnsModeChanged = viewModel::onDnsModeChanged,
                         onCustomDnsChanged = viewModel::onCustomDnsChanged,
                         onRoutingModeChanged = viewModel::onRoutingModeChanged,

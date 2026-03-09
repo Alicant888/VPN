@@ -1,6 +1,7 @@
 package com.trueroute.app.vpn
 
 import com.trueroute.app.model.ProxyConfig
+import com.trueroute.app.model.UdpRelayMode
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.EOFException
@@ -14,7 +15,7 @@ data class Socks5PreflightResult(
     val success: Boolean,
     val message: String,
     val authentication: String? = null,
-    val udpAssociateAddress: String? = null,
+    val relayCheck: String? = null,
 )
 
 object Socks5Preflight {
@@ -29,13 +30,25 @@ object Socks5Preflight {
                 val output = BufferedOutputStream(socket.getOutputStream())
 
                 val method = negotiateAuthentication(config, input, output)
-                val udpAssociateAddress = performUdpAssociate(input, output)
+                val relayCheck = when (config.udpRelayMode) {
+                    UdpRelayMode.UDP_ASSOCIATE -> {
+                        val udpAssociateAddress = performUdpAssociate(input, output)
+                        "Preflight relay: UDP Associate $udpAssociateAddress"
+                    }
+
+                    UdpRelayMode.TCP_FALLBACK -> {
+                        "Preflight relay: TCP fallback selected; UDP-in-TCP support will be verified by the native tunnel"
+                    }
+                }
 
                 Socks5PreflightResult(
                     success = true,
-                    message = "SOCKS5 preflight passed",
+                    message = when (config.udpRelayMode) {
+                        UdpRelayMode.UDP_ASSOCIATE -> "SOCKS5 preflight passed"
+                        UdpRelayMode.TCP_FALLBACK -> "SOCKS5 preflight passed (TCP fallback mode)"
+                    },
                     authentication = method,
-                    udpAssociateAddress = udpAssociateAddress,
+                    relayCheck = relayCheck,
                 )
             }
         }.getOrElse { error ->

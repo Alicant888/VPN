@@ -10,6 +10,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.trueroute.app.model.DnsMode
 import com.trueroute.app.model.ProxyConfigForm
 import com.trueroute.app.model.RoutingMode
+import com.trueroute.app.model.UdpRelayMode
 import kotlinx.coroutines.flow.first
 
 private val Context.proxyDataStore by preferencesDataStore(name = "trueroute_config")
@@ -30,6 +31,7 @@ class ProxyConfigRepository(
             routingMode = preferences[KEY_ROUTING_MODE]?.let(RoutingMode::valueOf) ?: RoutingMode.ALL_APPS,
             selectedApps = preferences[KEY_SELECTED_APPS] ?: emptySet(),
             autoStartOnLaunch = preferences[KEY_AUTO_START_ON_LAUNCH] ?: false,
+            udpRelayMode = preferences[KEY_UDP_RELAY_MODE]?.let(UdpRelayMode::valueOf) ?: UdpRelayMode.UDP_ASSOCIATE,
         )
     }
 
@@ -42,6 +44,7 @@ class ProxyConfigRepository(
             preferences[KEY_ROUTING_MODE] = form.routingMode.name
             preferences[KEY_SELECTED_APPS] = form.selectedApps
             preferences[KEY_AUTO_START_ON_LAUNCH] = form.autoStartOnLaunch
+            preferences[KEY_UDP_RELAY_MODE] = form.udpRelayMode.name
         }
         proxySecretsStore.write(form.username.trim(), form.password)
     }
@@ -57,5 +60,6 @@ class ProxyConfigRepository(
         private val KEY_ROUTING_MODE = stringPreferencesKey("routing_mode")
         private val KEY_SELECTED_APPS = stringSetPreferencesKey("selected_apps")
         private val KEY_AUTO_START_ON_LAUNCH = booleanPreferencesKey("auto_start_on_launch")
+        private val KEY_UDP_RELAY_MODE = stringPreferencesKey("udp_relay_mode")
     }
 }

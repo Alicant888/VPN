@@ -7,6 +7,7 @@ import com.trueroute.app.AppContainer
 import com.trueroute.app.model.DnsMode
 import com.trueroute.app.model.ProxyConfigForm
 import com.trueroute.app.model.RoutingMode
+import com.trueroute.app.model.UdpRelayMode
 import com.trueroute.app.validation.ProxyConfigValidation
 import com.trueroute.app.validation.ProxyConfigValidator
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,6 +49,8 @@ class MainViewModel(
     fun onUsernameChanged(value: String) = updateForm { it.copy(username = value) }
 
     fun onPasswordChanged(value: String) = updateForm { it.copy(password = value) }
+
+    fun onUdpRelayModeChanged(value: UdpRelayMode) = updateForm { it.copy(udpRelayMode = value) }
 
     fun onDnsModeChanged(value: DnsMode) = updateForm { it.copy(dnsMode = value) }
 

@@ -37,8 +37,8 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -49,6 +49,7 @@ import com.trueroute.app.model.DnsMode
 import com.trueroute.app.model.LogEntry
 import com.trueroute.app.model.RoutingMode
 import com.trueroute.app.model.TunnelPhase
+import com.trueroute.app.model.UdpRelayMode
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.ln
@@ -62,6 +63,7 @@ fun MainScreen(
     onProxyPortChanged: (String) -> Unit,
     onUsernameChanged: (String) -> Unit,
     onPasswordChanged: (String) -> Unit,
+    onUdpRelayModeChanged: (UdpRelayMode) -> Unit,
     onDnsModeChanged: (DnsMode) -> Unit,
     onCustomDnsChanged: (String) -> Unit,
     onRoutingModeChanged: (RoutingMode) -> Unit,
@@ -117,6 +119,13 @@ fun MainScreen(
                     onProxyPortChanged = onProxyPortChanged,
                     onUsernameChanged = onUsernameChanged,
                     onPasswordChanged = onPasswordChanged,
+                )
+            }
+            item {
+                RelayModeCard(
+                    uiState = uiState,
+                    enabled = settingsEditable,
+                    onUdpRelayModeChanged = onUdpRelayModeChanged,
                 )
             }
             item {
@@ -227,6 +236,44 @@ private fun ProxyCard(
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
             )
+        }
+    }
+}
+
+@Composable
+private fun RelayModeCard(
+    uiState: MainUiState,
+    enabled: Boolean,
+    onUdpRelayModeChanged: (UdpRelayMode) -> Unit,
+) {
+    Card {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Relay Mode", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = uiState.form.udpRelayMode == UdpRelayMode.UDP_ASSOCIATE,
+                    enabled = enabled,
+                    onClick = { onUdpRelayModeChanged(UdpRelayMode.UDP_ASSOCIATE) },
+                    label = { Text("Standard UDP") },
+                )
+                FilterChip(
+                    selected = uiState.form.udpRelayMode == UdpRelayMode.TCP_FALLBACK,
+                    enabled = enabled,
+                    onClick = { onUdpRelayModeChanged(UdpRelayMode.TCP_FALLBACK) },
+                    label = { Text("TCP fallback") },
+                )
+            }
+            if (uiState.form.udpRelayMode == UdpRelayMode.TCP_FALLBACK) {
+                Text(
+                    "Routes UDP through hev's proprietary UDP-in-TCP extension. Use this only if your proxy provider supports it or to test apps that misbehave with standard UDP relay.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            } else {
+                Text(
+                    "Uses standard SOCKS5 UDP Associate for DNS, QUIC and other UDP traffic.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
         }
     }
 }
