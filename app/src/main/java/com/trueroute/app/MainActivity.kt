@@ -1,4 +1,4 @@
-﻿package com.trueroute.app
+package com.trueroute.app
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -9,9 +9,13 @@ import androidx.activity.viewModels
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import com.trueroute.app.model.TunnelPhase
 import com.trueroute.app.ui.MainScreen
 import com.trueroute.app.ui.MainViewModel
+import com.trueroute.app.validation.ProxyConfigValidation
+import com.trueroute.app.validation.ProxyConfigValidator
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val appContainer by lazy { (application as TrueRouteApp).container }
@@ -42,12 +46,17 @@ class MainActivity : ComponentActivity() {
                         onDnsModeChanged = viewModel::onDnsModeChanged,
                         onCustomDnsChanged = viewModel::onCustomDnsChanged,
                         onRoutingModeChanged = viewModel::onRoutingModeChanged,
+                        onAutoStartOnLaunchChanged = viewModel::onAutoStartOnLaunchChanged,
                         onAppPickerVisibilityChanged = viewModel::onAppPickerVisibilityChanged,
                         onAppSelectionChanged = viewModel::onAppSelectionToggled,
                         onConnectToggle = ::toggleConnection,
                     )
                 }
             }
+        }
+
+        if (savedInstanceState == null) {
+            maybeAutoStartOnLaunch()
         }
     }
 
@@ -58,20 +67,37 @@ class MainActivity : ComponentActivity() {
             TunnelPhase.DISCONNECTING -> appContainer.tunnelController.stop()
 
             TunnelPhase.IDLE,
-            TunnelPhase.ERROR -> {
-                val validationError = viewModel.validateForConnect()
-                if (validationError != null) {
-                    viewModel.showValidation(validationError)
-                    return
-                }
+            TunnelPhase.ERROR -> requestConnection(viewModel.validateForConnect())
+        }
+    }
 
-                val permissionIntent = appContainer.tunnelController.preparePermissionIntent(this)
-                if (permissionIntent == null) {
-                    appContainer.tunnelController.start()
-                } else {
-                    vpnPermissionLauncher.launch(permissionIntent)
-                }
+    private fun maybeAutoStartOnLaunch() {
+        lifecycleScope.launch {
+            val form = appContainer.proxyConfigRepository.readForm()
+            if (!form.autoStartOnLaunch) {
+                return@launch
             }
+
+            val validationError = when (val validation = ProxyConfigValidator.validate(form)) {
+                is ProxyConfigValidation.Invalid -> validation.reason
+                is ProxyConfigValidation.Valid -> null
+            }
+
+            requestConnection(validationError)
+        }
+    }
+
+    private fun requestConnection(validationError: String?) {
+        if (validationError != null) {
+            viewModel.showValidation(validationError)
+            return
+        }
+
+        val permissionIntent = appContainer.tunnelController.preparePermissionIntent(this)
+        if (permissionIntent == null) {
+            appContainer.tunnelController.start()
+        } else {
+            vpnPermissionLauncher.launch(permissionIntent)
         }
     }
 }

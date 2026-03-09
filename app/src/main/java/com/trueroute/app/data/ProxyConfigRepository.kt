@@ -1,6 +1,7 @@
-﻿package com.trueroute.app.data
+package com.trueroute.app.data
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -28,6 +29,7 @@ class ProxyConfigRepository(
             customDns = preferences[KEY_CUSTOM_DNS] ?: DEFAULT_DNS,
             routingMode = preferences[KEY_ROUTING_MODE]?.let(RoutingMode::valueOf) ?: RoutingMode.ALL_APPS,
             selectedApps = preferences[KEY_SELECTED_APPS] ?: emptySet(),
+            autoStartOnLaunch = preferences[KEY_AUTO_START_ON_LAUNCH] ?: false,
         )
     }
 
@@ -39,6 +41,7 @@ class ProxyConfigRepository(
             preferences[KEY_CUSTOM_DNS] = form.customDns.trim().ifEmpty { DEFAULT_DNS }
             preferences[KEY_ROUTING_MODE] = form.routingMode.name
             preferences[KEY_SELECTED_APPS] = form.selectedApps
+            preferences[KEY_AUTO_START_ON_LAUNCH] = form.autoStartOnLaunch
         }
         proxySecretsStore.write(form.username.trim(), form.password)
     }
@@ -53,5 +56,6 @@ class ProxyConfigRepository(
         private val KEY_CUSTOM_DNS = stringPreferencesKey("custom_dns")
         private val KEY_ROUTING_MODE = stringPreferencesKey("routing_mode")
         private val KEY_SELECTED_APPS = stringSetPreferencesKey("selected_apps")
+        private val KEY_AUTO_START_ON_LAUNCH = booleanPreferencesKey("auto_start_on_launch")
     }
 }

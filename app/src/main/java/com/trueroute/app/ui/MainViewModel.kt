@@ -1,4 +1,4 @@
-﻿package com.trueroute.app.ui
+package com.trueroute.app.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -54,6 +54,8 @@ class MainViewModel(
     fun onCustomDnsChanged(value: String) = updateForm { it.copy(customDns = value) }
 
     fun onRoutingModeChanged(value: RoutingMode) = updateForm { it.copy(routingMode = value) }
+
+    fun onAutoStartOnLaunchChanged(value: Boolean) = updateForm { it.copy(autoStartOnLaunch = value) }
 
     fun onAppPickerVisibilityChanged(visible: Boolean) {
         _uiState.update { it.copy(isAppPickerVisible = visible) }

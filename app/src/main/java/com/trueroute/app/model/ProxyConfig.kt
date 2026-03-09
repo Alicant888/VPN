@@ -1,4 +1,4 @@
-﻿package com.trueroute.app.model
+package com.trueroute.app.model
 
 data class ProxyConfig(
     val proxyHost: String,
@@ -20,4 +20,5 @@ data class ProxyConfigForm(
     val customDns: String = "8.8.8.8",
     val routingMode: RoutingMode = RoutingMode.ALL_APPS,
     val selectedApps: Set<String> = emptySet(),
+    val autoStartOnLaunch: Boolean = false,
 )

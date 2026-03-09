@@ -23,12 +23,12 @@ import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -63,6 +63,7 @@ fun MainScreen(
     onDnsModeChanged: (DnsMode) -> Unit,
     onCustomDnsChanged: (String) -> Unit,
     onRoutingModeChanged: (RoutingMode) -> Unit,
+    onAutoStartOnLaunchChanged: (Boolean) -> Unit,
     onAppPickerVisibilityChanged: (Boolean) -> Unit,
     onAppSelectionChanged: (String, Boolean) -> Unit,
     onConnectToggle: () -> Unit,
@@ -117,6 +118,12 @@ fun MainScreen(
                     uiState = uiState,
                     onRoutingModeChanged = onRoutingModeChanged,
                     onAppPickerVisibilityChanged = onAppPickerVisibilityChanged,
+                )
+            }
+            item {
+                StartupCard(
+                    uiState = uiState,
+                    onAutoStartOnLaunchChanged = onAutoStartOnLaunchChanged,
                 )
             }
             item { LogsCard(uiState.logs) }
@@ -285,6 +292,34 @@ private fun RoutingCard(
 }
 
 @Composable
+private fun StartupCard(
+    uiState: MainUiState,
+    onAutoStartOnLaunchChanged: (Boolean) -> Unit,
+) {
+    Card {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Startup", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(
+                    checked = uiState.form.autoStartOnLaunch,
+                    onCheckedChange = onAutoStartOnLaunchChanged,
+                )
+                Column(modifier = Modifier.padding(start = 12.dp)) {
+                    Text("Auto-start after launch", fontWeight = FontWeight.Medium)
+                    Text(
+                        "TrueRoute will automatically try to connect when the app opens using the saved proxy settings.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun LogsCard(logs: List<LogEntry>) {
     Card {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -375,4 +410,3 @@ private fun formatBytes(bytes: Long): String {
     val value = bytes / 1024.0.pow(digitGroup.toDouble())
     return "%.1f %s".format(value, units[digitGroup])
 }
-
