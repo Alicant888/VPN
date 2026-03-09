@@ -1,4 +1,4 @@
-﻿package hev.htproxy;
+package hev.htproxy;
 
 public class TProxyService {
     static {

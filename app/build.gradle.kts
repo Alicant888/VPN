@@ -1,4 +1,6 @@
-﻿plugins {
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
+plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
@@ -7,7 +9,8 @@
 android {
     namespace = "com.trueroute.app"
     compileSdk = 36
-    ndkVersion = "29.0.14513151"
+    buildToolsVersion = "36.1.0"
+    ndkVersion = "27.0.12077973"
 
     defaultConfig {
         applicationId = "com.trueroute.app"
@@ -46,10 +49,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
+    
     buildFeatures {
         compose = true
     }
@@ -87,6 +87,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.compose.material3.window.size)
+    implementation(libs.google.material)
 
     testImplementation(libs.junit4)
 
@@ -96,4 +97,10 @@ dependencies {
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
+    }
 }
